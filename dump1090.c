@@ -406,10 +406,10 @@ int modesInitHackRF(void) {
     // Set the center frequency and sampling rate, which will be 8MSPS
     // This gets decimated to 2MSPS in the callback
     // TODO: Use PPM value, but for now, -6ppm
-    hackrf_set_freq(Modes.hackrf_dev, 1089993460LL);
-    hackrf_set_sample_rate(Modes.hackrf_dev, 8000000L);
+    hackrf_set_freq(Modes.hackrf_dev, 1089993460ull);
+    hackrf_set_sample_rate(Modes.hackrf_dev, 8000000);
     // Use a 2MHZ filter or thereabouts
-    uint32_t computed = hackrf_compute_baseband_filter_bw(2000000L);
+    uint32_t computed = hackrf_compute_baseband_filter_bw(2000000);
     hackrf_set_baseband_filter_bandwidth(Modes.hackrf_dev, computed);
     
     hackrf_set_lna_gain(Modes.hackrf_dev, 40);
@@ -601,8 +601,8 @@ int hackrfCallback(hackrf_transfer *transfer) {
     static uint8_t decimatedBuffer[MODES_RTL_BUF_SIZE];
     uint32_t bufferPos, decimatePos;
     for(bufferPos = 0, decimatePos = 0; decimatePos < MODES_RTL_BUF_SIZE; bufferPos+=7, decimatePos++) {
-      decimatedBuffer[decimatePos++] = buf[bufferPos++]; // ^ (uint8_t)0x80;
-      decimatedBuffer[decimatePos] = buf[bufferPos]; // ^ (uint8_t)0x80;
+      decimatedBuffer[decimatePos++] = buf[bufferPos++] ^ (uint8_t)0x80;
+      decimatedBuffer[decimatePos] = buf[bufferPos] ^ (uint8_t)0x80;
     }
 
     // Use the decimated buffer now
@@ -783,6 +783,7 @@ void *readerThreadEntryPoint(void *arg) {
     if (Modes.filename == NULL) {
         while (!Modes.exit) {
 #ifdef USE_HACKRF
+            fprintf(stderr, "Starting RX");
             hackrf_start_rx(Modes.hackrf_dev, hackrfCallback, NULL);
           }
           
