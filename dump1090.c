@@ -781,10 +781,11 @@ void *readerThreadEntryPoint(void *arg) {
     start_cpu_timing(&reader_thread_start); // we accumulate in rtlsdrCallback() or readDataFromFile()
 
     if (Modes.filename == NULL) {
-        while (!Modes.exit) {
 #ifdef USE_HACKRF
-            fprintf(stderr, "Starting RX");
-            hackrf_start_rx(Modes.hackrf_dev, hackrfCallback, NULL);
+          hackrf_start_rx(Modes.hackrf_dev, hackrfCallback, NULL);
+          
+          while(hackrf_is_streaming() == HACKRF_TRUE && !Modes.exit) {
+            sleep(1);
           }
           
           if(Modes.hackrf_dev != NULL) {
@@ -792,6 +793,7 @@ void *readerThreadEntryPoint(void *arg) {
             hackrf_close(Modes.hackrf_dev);
           }
 #else
+        while (!Modes.exit) {
             rtlsdr_read_async(Modes.dev, rtlsdrCallback, NULL,
                               MODES_RTL_BUFFERS,
                               MODES_RTL_BUF_SIZE);
