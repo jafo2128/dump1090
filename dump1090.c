@@ -385,7 +385,6 @@ int modesInitRTLSDR(void) {
 // Initialize the HackRF
 #ifdef USE_HACKRF
 int modesInitHackRF(void) {
-    int j;
     hackrf_device_list_t *hackrf_list;
 
     fprintf(stderr, "Initializing the HackRF...\n");
@@ -603,7 +602,8 @@ int hackrfCallback(hackrf_transfer *transfer) {
     // This is a set of pairs of IQ data, so each section is 2 bytes
     // Data also comes in signed, unsign it
     static uint8_t decimatedBuffer[MODES_RTL_BUF_SIZE];
-    for(uint32_t bufferPos = 0, decimatePos = 0; decimatePos < MODES_RTL_BUF_SIZE; bufferPos+=8, decimatePos++) {
+    uint32_t bufferPos, decimatePos;
+    for(bufferPos = 0, decimatePos = 0; decimatePos < MODES_RTL_BUF_SIZE; bufferPos+=8, decimatePos++) {
       decimatedBuffer[decimatePos++] = buf[bufferPos++] ^ (uint8_t)0x80;
       decimatedBuffer[decimatePos] = buf[bufferPos] ^ (uint8_t)0x80;
     }
