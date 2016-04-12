@@ -557,7 +557,6 @@ int hackrfCallback(hackrf_transfer *transfer) {
 
     // If we're still collecting data...
     if(collectedLength < MODES_RTL_BUF_SIZE*4) {
-      fprintf(stderr, "Collecting %u bytes after %u\n", transfer->valid_length, collectedLength);
       memcpy(collectedBuffer+collectedLength, transfer->buffer, transfer->valid_length);
       collectedLength += transfer->valid_length;
     }
@@ -566,8 +565,6 @@ int hackrfCallback(hackrf_transfer *transfer) {
     if(collectedLength < MODES_RTL_BUF_SIZE*4) {
       return 0;
     }
-    
-    fprintf(stderr, "We have an entire block at %u bytes.\n", collectedLength);
     
     // We now have a full set of 8MSPS data
     buf = collectedBuffer;
@@ -585,7 +582,7 @@ int hackrfCallback(hackrf_transfer *transfer) {
     lastbuf = &Modes.mag_buffers[(Modes.first_free_buffer + MODES_MAG_BUFFERS - 1) % MODES_MAG_BUFFERS];
     free_bufs = (Modes.first_filled_buffer - next_free_buffer + MODES_MAG_BUFFERS) % MODES_MAG_BUFFERS;
 
-    // Paranoia! Unlikely, but let's go for belt and suspenders here    
+    // Paranoia! Unlikely, but let's go for belt and suspenders here
     if (len != (MODES_RTL_BUF_SIZE * 4)) {
       fprintf(stderr, "weirdness: received a block of %u bytes, expecting %u bytes\n",
                 (unsigned)len, (unsigned)MODES_RTL_BUF_SIZE*4);
@@ -603,15 +600,16 @@ int hackrfCallback(hackrf_transfer *transfer) {
     // Data also comes in signed, unsign it
     static uint8_t decimatedBuffer[MODES_RTL_BUF_SIZE];
     uint32_t bufferPos, decimatePos;
-    for(bufferPos = 0, decimatePos = 0; decimatePos < MODES_RTL_BUF_SIZE; bufferPos+=8, decimatePos++) {
-      decimatedBuffer[decimatePos++] = buf[bufferPos++] ^ (uint8_t)0x80;
-      decimatedBuffer[decimatePos] = buf[bufferPos] ^ (uint8_t)0x80;
+    for(bufferPos = 0, decimatePos = 0; decimatePos < MODES_RTL_BUF_SIZE; bufferPos+=7, decimatePos++) {
+      decimatedBuffer[decimatePos++] = buf[bufferPos++]; // ^ (uint8_t)0x80;
+      decimatedBuffer[decimatePos] = buf[bufferPos]; // ^ (uint8_t)0x80;
     }
-    
+
     // Use the decimated buffer now
     buf = decimatedBuffer;
-    
+
     len /= 4;
+    fprintf(stderr, "After decimation: %u, %u, %u, %lu\n", bufferPos, decimatePos, len, time(NULL));
 
     was_odd = (len & 1);
     slen = len/2;
@@ -660,7 +658,7 @@ int hackrfCallback(hackrf_transfer *transfer) {
 
     pthread_cond_signal(&Modes.data_cond);
     pthread_mutex_unlock(&Modes.data_mutex);
-    
+
     return 0;
 }
 #endif
