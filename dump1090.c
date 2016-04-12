@@ -51,6 +51,10 @@
 
 #include <rtl-sdr.h>
 
+#ifdef USE_HACKRF
+#include <libhackrf/hackrf.h>
+#endif
+
 #include <stdarg.h>
 
 static int verbose_device_search(char *s);
@@ -375,6 +379,49 @@ int modesInitRTLSDR(void) {
 
     return 0;
 }
+
+//
+//=========================================================================
+// Initialize the HackRF
+#ifdef USE_HACKRF
+int modesInitHackRF(void) {
+    int j;
+    hackrf_device_list_t *hackrf_list;
+
+    fprintf(stderr, "Initializing the HackRF...\n");
+
+    hackrf_init();
+
+    hackrf_list = hackrf_device_list();
+
+    if(hackrf_list == NULL) {
+      fprintf(stderr, "No HackRF devices found.\n");
+      return -1;
+    }
+
+    if(hackrf_device_list_open(hackrf_list, 0, &Modes.hackrf_dev) < 0) {
+      fprintf(stderr, "Error opening HackRF: %s\n", strerror(errno));
+      return -1;
+    }
+
+    // Set the center frequency and sampling rate, which will be 8MSPS
+    // This gets decimated to 2MSPS in the callback
+    // TODO: Use PPM value, but for now, -6ppm
+    hackrf_set_freq(Modes.hackrf_dev, 1089993460LL);
+    hackrf_set_sample_rate(Modes.hackrf_dev, 8000000L);
+    // Use a 2MHZ filter or thereabouts
+    uint32_t computed = hackrf_compute_baseband_filter_bw(2000000L);
+    hackrf_set_baseband_filter_bandwidth(Modes.hackrf_dev, computed);
+    
+    hackrf_set_lna_gain(Modes.hackrf_dev, 40);
+    hackrf_set_vga_gain(Modes.hackrf_dev, 16);
+    hackrf_set_amp_enable(Modes.hackrf_dev, 0);
+    
+    hackrf_set_antenna_enable(Modes.hackrf_dev, 0);
+    
+    return 0;
+}
+#endif
 //
 //=========================================================================
 //
@@ -483,6 +530,140 @@ void rtlsdrCallback(unsigned char *buf, uint32_t len, void *ctx) {
     pthread_cond_signal(&Modes.data_cond);
     pthread_mutex_unlock(&Modes.data_mutex);
 }
+//
+//=========================================================================
+// HackRF data callback, which will include decimation
+#ifdef USE_HACKRF
+int hackrfCallback(hackrf_transfer *transfer) {
+    struct mag_buf *outbuf;
+    struct mag_buf *lastbuf;
+    uint32_t slen;
+    unsigned next_free_buffer;
+    unsigned free_bufs;
+    unsigned block_duration;
+
+    static int was_odd = 0; // paranoia!!
+    static int dropping = 0;
+
+    uint8_t *buf;
+    int len;
+
+    static uint8_t collectedBuffer[MODES_RTL_BUF_SIZE*4]; // = NULL;
+    static int collectedLength = 0;
+    
+/*    if(collectedBuffer == NULL) {
+      fprintf(stderr, "Allocating buffer for collection.\n");
+      collectedBuffer = (uint8_t)malloc(MODES_RTL_BUF_SIZE*4);
+    }*/
+
+    // If we're still collecting data...
+    if(collectedLength < MODES_RTL_BUF_SIZE*4) {
+      fprintf(stderr, "Collecting %u bytes after %u\n", transfer->valid_length, collectedLength);
+      memcpy(collectedBuffer+collectedLength, transfer->buffer, transfer->valid_length);
+      collectedLength += transfer->valid_length;
+    }
+
+    // Block still too small?
+    if(collectedLength < MODES_RTL_BUF_SIZE*4) {
+      return 0;
+    }
+    
+    fprintf(stderr, "We have an entire block at %u bytes.\n", collectedLength);
+    
+    // We now have a full set of 8MSPS data
+    buf = collectedBuffer;
+    len = collectedLength;
+    collectedLength = 0;
+    
+    // Lock the data buffer variables before accessing them
+    pthread_mutex_lock(&Modes.data_mutex);
+    if (Modes.exit) {
+        hackrf_stop_rx(Modes.hackrf_dev);
+    }
+
+    next_free_buffer = (Modes.first_free_buffer + 1) % MODES_MAG_BUFFERS;
+    outbuf = &Modes.mag_buffers[Modes.first_free_buffer];
+    lastbuf = &Modes.mag_buffers[(Modes.first_free_buffer + MODES_MAG_BUFFERS - 1) % MODES_MAG_BUFFERS];
+    free_bufs = (Modes.first_filled_buffer - next_free_buffer + MODES_MAG_BUFFERS) % MODES_MAG_BUFFERS;
+
+    // Paranoia! Unlikely, but let's go for belt and suspenders here    
+    if (len != (MODES_RTL_BUF_SIZE * 4)) {
+      fprintf(stderr, "weirdness: received a block of %u bytes, expecting %u bytes\n",
+                (unsigned)len, (unsigned)MODES_RTL_BUF_SIZE*4);
+    }
+
+    if (was_odd) {
+        // Drop a sample so we are in sync with I/Q samples again (hopefully)
+        ++buf;
+        --len;
+        ++outbuf->dropped;
+    }
+
+    // Decimate the buffer now
+    // This is a set of pairs of IQ data, so each section is 2 bytes
+    // Data also comes in signed, unsign it
+    static uint8_t decimatedBuffer[MODES_RTL_BUF_SIZE];
+    for(uint32_t bufferPos = 0, decimatePos = 0; decimatePos < MODES_RTL_BUF_SIZE; bufferPos+=8, decimatePos++) {
+      decimatedBuffer[decimatePos++] = buf[bufferPos++] ^ (uint8_t)0x80;
+      decimatedBuffer[decimatePos] = buf[bufferPos] ^ (uint8_t)0x80;
+    }
+    
+    // Use the decimated buffer now
+    buf = decimatedBuffer;
+    
+    len /= 4;
+
+    was_odd = (len & 1);
+    slen = len/2;
+
+    if (free_bufs == 0 || (dropping && free_bufs < MODES_MAG_BUFFERS/2)) {
+        // FIFO is full. Drop this block.
+        dropping = 1;
+        outbuf->dropped += slen;
+        pthread_mutex_unlock(&Modes.data_mutex);
+        return 0;
+    }
+
+    dropping = 0;
+    pthread_mutex_unlock(&Modes.data_mutex);
+
+    // Compute the sample timestamp and system timestamp for the start of the block
+    outbuf->sampleTimestamp = lastbuf->sampleTimestamp + 12e6 * (lastbuf->length + outbuf->dropped) / Modes.sample_rate;
+    block_duration = 1e9 * slen / Modes.sample_rate;
+
+    // Get the approx system time for the start of this block
+    clock_gettime(CLOCK_REALTIME, &outbuf->sysTimestamp);
+    outbuf->sysTimestamp.tv_nsec -= block_duration;
+    normalize_timespec(&outbuf->sysTimestamp);
+
+    // Copy trailing data from last block (or reset if not valid)
+    if (outbuf->dropped == 0 && lastbuf->length >= Modes.trailing_samples) {
+        memcpy(outbuf->data, lastbuf->data + lastbuf->length - Modes.trailing_samples, Modes.trailing_samples * sizeof(uint16_t));
+    } else {
+        memset(outbuf->data, 0, Modes.trailing_samples * sizeof(uint16_t));
+    }
+
+    // Convert the new data
+    outbuf->length = slen;
+    convert_samples(buf, &outbuf->data[Modes.trailing_samples], slen, &outbuf->total_power);
+
+    // Push the new data to the demodulation thread
+    pthread_mutex_lock(&Modes.data_mutex);
+
+    Modes.mag_buffers[next_free_buffer].dropped = 0;
+    Modes.mag_buffers[next_free_buffer].length = 0;  // just in case
+    Modes.first_free_buffer = next_free_buffer;
+
+    // accumulate CPU while holding the mutex, and restart measurement
+    end_cpu_timing(&reader_thread_start, &Modes.reader_cpu_accumulator);
+    start_cpu_timing(&reader_thread_start);
+
+    pthread_cond_signal(&Modes.data_cond);
+    pthread_mutex_unlock(&Modes.data_mutex);
+    
+    return 0;
+}
+#endif
 //
 //=========================================================================
 //
@@ -603,6 +784,15 @@ void *readerThreadEntryPoint(void *arg) {
 
     if (Modes.filename == NULL) {
         while (!Modes.exit) {
+#ifdef USE_HACKRF
+            hackrf_start_rx(Modes.hackrf_dev, hackrfCallback, NULL);
+          }
+          
+          if(Modes.hackrf_dev != NULL) {
+            hackrf_stop_rx(Modes.hackrf_dev);
+            hackrf_close(Modes.hackrf_dev);
+          }
+#else
             rtlsdr_read_async(Modes.dev, rtlsdrCallback, NULL,
                               MODES_RTL_BUFFERS,
                               MODES_RTL_BUF_SIZE);
@@ -623,6 +813,7 @@ void *readerThreadEntryPoint(void *arg) {
             rtlsdr_close(Modes.dev);
             Modes.dev = NULL;
         }
+#endif
     } else {
         readDataFromFile();
     }
@@ -1119,9 +1310,15 @@ int main(int argc, char **argv) {
     if (Modes.net_only) {
         fprintf(stderr,"Net-only mode, no RTL device or file open.\n");
     } else if (Modes.filename == NULL) {
+#ifdef USE_HACKRF
+        if (modesInitHackRF() < 0) {
+            exit(1);
+        }
+#else
         if (modesInitRTLSDR() < 0) {
             exit(1);
         }
+#endif
     } else {
         if (Modes.filename[0] == '-' && Modes.filename[1] == '\0') {
             Modes.fd = STDIN_FILENO;
@@ -1250,6 +1447,9 @@ int main(int argc, char **argv) {
     }
 
     cleanup_converter(Modes.converter_state);
+#ifdef USE_HACKRF
+    hackrf_exit();
+#endif
     log_with_timestamp("Normal exit.");
 
 #ifndef _WIN32

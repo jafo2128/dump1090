@@ -4,6 +4,8 @@
 #
 PROGNAME=dump1090
 
+HACKRF=1
+
 ifndef DUMP1090_VERSION
 DUMP1090_VERSION=$(shell git describe --tags --match=v*)
 endif
@@ -15,10 +17,15 @@ EXTRACFLAGS=-DHTMLPATH=\"$(SHAREDIR)\"
 endif
 
 CPPFLAGS+=-DMODES_DUMP1090_VERSION=\"$(DUMP1090_VERSION)\"
-CFLAGS+=-O2 -g -Wall -Werror -W
+CFLAGS+=-O2 -g -Wall -W
 LIBS=-lpthread -lm
 LIBS_RTL=`pkg-config --libs librtlsdr libusb-1.0`
 CC=gcc
+
+ifdef HACKRF
+CFLAGS+=-DUSE_HACKRF `pkg-config --cflags libhackrf`
+LIBS_RTL+=`pkg-config --libs libhackrf`
+endif
 
 UNAME := $(shell uname)
 

@@ -87,6 +87,10 @@
 // Avoid a dependency on rtl-sdr except where it's really needed.
 typedef struct rtlsdr_dev rtlsdr_dev_t;
 
+#ifdef USE_HACKRF
+typedef struct hackrf_device hackrf_dev_t;
+#endif
+
 // ============================= #defines ===============================
 
 #define MODES_DEFAULT_PPM          52
@@ -264,6 +268,9 @@ struct {                             // Internal state
     int           gain;
     int           enable_agc;
     rtlsdr_dev_t *dev;
+#ifdef USE_HACKRF
+    hackrf_dev_t *hackrf_dev;
+#endif
     int           freq;
     int           ppm_error;
 
