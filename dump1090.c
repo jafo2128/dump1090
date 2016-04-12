@@ -413,8 +413,8 @@ int modesInitHackRF(void) {
     hackrf_set_baseband_filter_bandwidth(Modes.hackrf_dev, computed);
     
     hackrf_set_lna_gain(Modes.hackrf_dev, 40);
-    hackrf_set_vga_gain(Modes.hackrf_dev, 16);
-    hackrf_set_amp_enable(Modes.hackrf_dev, 0);
+    hackrf_set_vga_gain(Modes.hackrf_dev, 32);
+    hackrf_set_amp_enable(Modes.hackrf_dev, 1);
     
     hackrf_set_antenna_enable(Modes.hackrf_dev, 0);
     
@@ -574,7 +574,8 @@ int hackrfCallback(hackrf_transfer *transfer) {
     // Lock the data buffer variables before accessing them
     pthread_mutex_lock(&Modes.data_mutex);
     if (Modes.exit) {
-        hackrf_stop_rx(Modes.hackrf_dev);
+	hackrf_stop_rx(Modes.hackrf_dev);
+	return -1;
     }
 
     next_free_buffer = (Modes.first_free_buffer + 1) % MODES_MAG_BUFFERS;
@@ -609,7 +610,6 @@ int hackrfCallback(hackrf_transfer *transfer) {
     buf = decimatedBuffer;
 
     len /= 4;
-    fprintf(stderr, "After decimation: %u, %u, %u, %lu\n", bufferPos, decimatePos, len, time(NULL));
 
     was_odd = (len & 1);
     slen = len/2;
@@ -784,12 +784,12 @@ void *readerThreadEntryPoint(void *arg) {
 #ifdef USE_HACKRF
           hackrf_start_rx(Modes.hackrf_dev, hackrfCallback, NULL);
           
-          while(hackrf_is_streaming() == HACKRF_TRUE && !Modes.exit) {
+          while(hackrf_is_streaming(Modes.hackrf_dev) == HACKRF_TRUE && !Modes.exit) {
             sleep(1);
           }
           
           if(Modes.hackrf_dev != NULL) {
-            hackrf_stop_rx(Modes.hackrf_dev);
+            //hackrf_stop_rx(Modes.hackrf_dev);
             hackrf_close(Modes.hackrf_dev);
           }
 #else
