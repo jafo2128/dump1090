@@ -53,7 +53,11 @@
 
 #ifdef USE_HACKRF
 #include <libhackrf/hackrf.h>
+#ifdef USE_SAMPLERATE
 #include <samplerate.h>
+#else
+#include <soxr.h>
+#endif
 #endif
 
 #include <stdarg.h>
@@ -409,8 +413,8 @@ int modesInitHackRF(void) {
     // TODO: Use PPM value, but for now, -6ppm
     hackrf_set_freq(Modes.hackrf_dev, 1089993460ull);
     hackrf_set_sample_rate(Modes.hackrf_dev, 8000000);
-    // Use a 2MHZ filter or thereabouts
-    uint32_t computed = hackrf_compute_baseband_filter_bw(2000000);
+    // Use a 1.2MHZ filter or thereabouts
+    uint32_t computed = hackrf_compute_baseband_filter_bw(1200000);
     hackrf_set_baseband_filter_bandwidth(Modes.hackrf_dev, computed);
     
     hackrf_set_lna_gain(Modes.hackrf_dev, 40);
@@ -420,7 +424,10 @@ int modesInitHackRF(void) {
     hackrf_set_antenna_enable(Modes.hackrf_dev, 0);
     
     // Setup the resampler
-    /*soxr_io_spec_t iospec;
+#ifdef USE_SAMPLERATE
+    Modes.resampler = src_new(SRC_SINC_BEST_QUALITY, 2, NULL);
+#else
+    soxr_io_spec_t iospec;
     iospec.itype = SOXR_INT16_I;
     iospec.otype = SOXR_INT16_I;
     iospec.scale = 1;
@@ -448,8 +455,8 @@ int modesInitHackRF(void) {
       &iospec,
       &quspec,
       &runspec
-    );*/
-    Modes.resampler = src_new(SRC_SINC_BEST_QUALITY, 2, NULL);
+    );
+#endif
     return 0;
 }
 #endif
@@ -580,13 +587,22 @@ int hackrfCallback(hackrf_transfer *transfer) {
     int len;
 
     // Scale the 8 bits into 16 bits, this will be signed ints.
+#ifdef USE_SAMPLERATE
     static float transferBufferScaled[MODES_RTL_BUF_SIZE];
     static float transferBufferResampled[MODES_RTL_BUF_SIZE];
+#else
+    static int16_t transferBufferScaled[MODES_RTL_BUF_SIZE];
+    static int16_t transferBufferResampled[MODES_RTL_BUF_SIZE];
+#endif
     for(len = 0; len < transfer->valid_length; len++) {
+      #ifdef USE_SAMPLERATE
       transferBufferScaled[len] = (float)(transfer->buffer[len] / 128.);
+      #else
+      transferBufferScaled[len] = transfer->buffer[len]<<8;
+      #endif
     }
     
-    {
+#ifdef USE_SAMPLERATE
       SRC_DATA src_data;
       src_data.data_in = transferBufferScaled;
       src_data.data_out = transferBufferResampled;
@@ -595,16 +611,21 @@ int hackrfCallback(hackrf_transfer *transfer) {
       src_data.src_ratio = 2400000./8000000.;
       src_data.end_of_input = 0;
       src_process(Modes.resampler, &src_data);
-/*      soxr_process(Modes.resampler,
-        transferBufferScaled, transfer->valid_length, &idone,
-        transferBufferResampled, MODES_RTL_BUF_SIZE, &odone
+      fprintf(stderr, "Resampler resulted in: in: %ld, out: %ld\n", src_data.input_frames_used, src_data.output_frames_gen);
+#else
+    {
+      size_t idone, odone;
+      soxr_process(Modes.resampler,
+        transferBufferScaled, transfer->valid_length/2, &idone,
+        transferBufferResampled, MODES_RTL_BUF_SIZE/2, &odone
       );
       if(idone != transfer->valid_length) {
         fprintf(stderr, "Not all input consumed in resampler, got %u, expected %u\n",
           idone, transfer->valid_length);
-      }*/
-      fprintf(stderr, "Resampler resulted in: in: %ld, out: %ld\n", src_data.input_frames_used, src_data.output_frames_gen);
+      }
+      fprintf(stderr, "Resampler resulted in: in: %ld, out: %ld\n", idone, odone);
     }
+#endif
 
     static uint8_t collectedBuffer[MODES_RTL_BUF_SIZE*4]; // = NULL;
     static int collectedLength = 0;
