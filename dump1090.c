@@ -428,8 +428,8 @@ int modesInitHackRF(void) {
     Modes.resampler = src_new(SRC_SINC_BEST_QUALITY, 2, NULL);
 #else
     soxr_io_spec_t iospec = soxr_io_spec(SOXR_INT16_I, SOXR_INT16_I);
-    soxr_quality_spec_t quspec = soxr_quality_spec(SOXR_MQ, SOXR_MINIMUM_PHASE);
-    soxr_runtime_spec_t runspec = soxr_runtime_spec(4);
+    soxr_quality_spec_t quspec = soxr_quality_spec(SOXR_QQ, SOXR_LINEAR_PHASE);
+    soxr_runtime_spec_t runspec = soxr_runtime_spec(0);
     Modes.resampler = soxr_create(
       8000000,
       (Modes.oversample?2400000:2000000),
