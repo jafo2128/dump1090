@@ -427,26 +427,9 @@ int modesInitHackRF(void) {
 #ifdef USE_SAMPLERATE
     Modes.resampler = src_new(SRC_SINC_BEST_QUALITY, 2, NULL);
 #else
-    soxr_io_spec_t iospec;
-    iospec.itype = SOXR_INT16_I;
-    iospec.otype = SOXR_INT16_I;
-    iospec.scale = 1;
-    iospec.e = NULL;
-    iospec.flags = 0;
-    soxr_quality_spec_t quspec;
-    quspec.precision = 20;
-    quspec.phase_response = 20.;
-    quspec.passband_end = 0.913;
-    quspec.stopband_begin = 1.;
-    quspec.e = NULL;
-    quspec.flags = 0;
-    soxr_runtime_spec_t runspec;
-    runspec.log2_min_dft_size = 10;
-    runspec.log2_large_dft_size = 17;
-    runspec.coef_size_kbytes = 400;
-    runspec.e = NULL;
-    runspec.flags = SOXR_COEF_INTERP_LOW;
-    runspec.num_threads = 0;
+    soxr_io_spec_t iospec = soxr_io_spec(SOXR_INT16_I, SOXR_INT16_I);
+    soxr_quality_spec_t quspec = soxr_quality_spec(SOXR_MQ, SOXR_MINIMUM_PHASE);
+    soxr_runtime_spec_t runspec = soxr_runtime_spec(4);
     Modes.resampler = soxr_create(
       8000000,
       (Modes.oversample?2400000:2000000),
@@ -619,7 +602,7 @@ int hackrfCallback(hackrf_transfer *transfer) {
         transferBufferScaled, transfer->valid_length/2, &idone,
         transferBufferResampled, MODES_RTL_BUF_SIZE/2, &odone
       );
-      if(idone != transfer->valid_length) {
+      if(idone != transfer->valid_length/2) {
         fprintf(stderr, "Not all input consumed in resampler, got %u, expected %u\n",
           idone, transfer->valid_length);
       }
