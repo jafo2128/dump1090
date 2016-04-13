@@ -23,8 +23,8 @@ LIBS_RTL=`pkg-config --libs librtlsdr libusb-1.0`
 CC=gcc
 
 ifdef HACKRF
-CFLAGS+=-DUSE_HACKRF `pkg-config --cflags libhackrf soxr`
-LIBS_RTL+=`pkg-config --libs libhackrf soxr`
+CFLAGS+=-DUSE_HACKRF `pkg-config --cflags libhackrf samplerate`
+LIBS_RTL+=`pkg-config --libs libhackrf samplerate`
 endif
 
 UNAME := $(shell uname)

@@ -53,7 +53,7 @@
 
 #ifdef USE_HACKRF
 #include <libhackrf/hackrf.h>
-#include <soxr.h>
+#include <samplerate.h>
 #endif
 
 #include <stdarg.h>
@@ -420,7 +420,7 @@ int modesInitHackRF(void) {
     hackrf_set_antenna_enable(Modes.hackrf_dev, 0);
     
     // Setup the resampler
-    soxr_io_spec_t iospec;
+    /*soxr_io_spec_t iospec;
     iospec.itype = SOXR_INT16_I;
     iospec.otype = SOXR_INT16_I;
     iospec.scale = 1;
@@ -448,7 +448,8 @@ int modesInitHackRF(void) {
       &iospec,
       &quspec,
       &runspec
-    );
+    );*/
+    Modes.resampler = src_new(SRC_SINC_BEST_QUALITY, 2, NULL);
     return 0;
 }
 #endif
@@ -579,23 +580,30 @@ int hackrfCallback(hackrf_transfer *transfer) {
     int len;
 
     // Scale the 8 bits into 16 bits, this will be signed ints.
-    static int16_t transferBufferScaled[MODES_RTL_BUF_SIZE];
-    static int16_t transferBufferResampled[MODES_RTL_BUF_SIZE];
+    static float transferBufferScaled[MODES_RTL_BUF_SIZE];
+    static float transferBufferResampled[MODES_RTL_BUF_SIZE];
     for(len = 0; len < transfer->valid_length; len++) {
-      transferBufferScaled[len] = transfer->buffer[len] << 8;
+      transferBufferScaled[len] = (float)(transfer->buffer[len] / 128.);
     }
     
     {
-      size_t idone, odone;
-      soxr_process(Modes.resampler,
+      SRC_DATA src_data;
+      src_data.data_in = transferBufferScaled;
+      src_data.data_out = transferBufferResampled;
+      src_data.input_frames = transfer->valid_length;
+      src_data.output_frames = MODES_RTL_BUF_SIZE;
+      src_data.src_ratio = 2400000./8000000.;
+      src_data.end_of_input = 0;
+      src_process(Modes.resampler, &src_data);
+/*      soxr_process(Modes.resampler,
         transferBufferScaled, transfer->valid_length, &idone,
         transferBufferResampled, MODES_RTL_BUF_SIZE, &odone
       );
       if(idone != transfer->valid_length) {
         fprintf(stderr, "Not all input consumed in resampler, got %u, expected %u\n",
           idone, transfer->valid_length);
-      }
-      fprintf(stderr, "Resampler resulted in: idone: %u, odone: %u\n", idone, odone);
+      }*/
+      fprintf(stderr, "Resampler resulted in: in: %ld, out: %ld\n", src_data.input_frames_used, src_data.output_frames_gen);
     }
 
     static uint8_t collectedBuffer[MODES_RTL_BUF_SIZE*4]; // = NULL;
