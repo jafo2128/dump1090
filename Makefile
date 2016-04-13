@@ -23,7 +23,8 @@ LIBS_RTL=`pkg-config --libs librtlsdr libusb-1.0`
 CC=gcc
 
 ifdef HACKRF
-CFLAGS+=-DUSE_HACKRF `pkg-config --cflags libhackrf soxr` -Wno-cast-align -mfpu=neon       -mfloat-abi=hard
+CFLAGS+=-DUSE_HACKRF `pkg-config --cflags libhackrf soxr`
+#-Wno-cast-align -mfpu=neon       -mfloat-abi=hard
 LIBS_RTL+=`pkg-config --libs libhackrf soxr`
 endif
 
@@ -50,7 +51,7 @@ all: dump1090 view1090
 
 dump1090.o: CFLAGS += `pkg-config --cflags librtlsdr`
 
-dump1090: dump1090.o anet.o interactive.o mode_ac.o mode_s.o net_io.o crc.o demod_2000.o demod_2400.o stats.o cpr.o icao_filter.o track.o util.o convert.o $(COMPAT)
+dump1090: dump1090.o anet.o interactive.o mode_ac.o mode_s.o net_io.o crc.o demod_2000.o demod_2400.o stats.o cpr.o icao_filter.o track.o util.o convert.o fir_filter.o $(COMPAT)
 	$(CC) -g -o $@ $^ $(LIBS) $(LIBS_RTL) $(LDFLAGS)
 
 view1090: view1090.o anet.o interactive.o mode_ac.o mode_s.o net_io.o crc.o stats.o cpr.o icao_filter.o track.o util.o $(COMPAT)

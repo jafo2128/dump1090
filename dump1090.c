@@ -53,6 +53,8 @@
 
 #ifdef USE_HACKRF
 #include <libhackrf/hackrf.h>
+#include "fir_filter_coeffs.h"
+#include "fir_filter.h"
 #ifdef USE_SAMPLERATE
 #include <samplerate.h>
 #else
@@ -573,6 +575,29 @@ int hackrfCallback(hackrf_transfer *transfer) {
 
     uint8_t *buf;
     int len;
+
+    {
+      static double transferBufferScaled[2][MODES_RTL_BUF_SIZE/2];
+      static double transferBufferResampled[2][MODES_RTL_BUF_SIZE/2];
+      static double ibuf[FILTER_TAP_NUM], qbuf[FILTER_TAP_NUM];
+      static uint8_t outbuf[MODES_RTL_BUF_SIZE];
+      for(len = 0; len < transfer->valid_length;) {
+        uint16_t pos = len/2;
+        transferBufferScaled[0][pos] = transfer->buffer[len++];
+        transferBufferScaled[1][pos] = transfer->buffer[len++];
+      }
+      static int currPhase = 0;
+      int out;
+      resamp_complex(3, 10, FILTER_TAP_NUM/3, &currPhase, filter_taps, &ibuf, &qbuf,
+        transfer->valid_length/2, transferBufferScaled[0], transferBufferScaled[1],
+        transferBufferResampled[0], transferBufferResampled[1], &out);
+      for(len = 0; len < out*2;) {
+        uint16_t pos = len/2;
+        outbuf[len++] = transferBufferResampled[0][pos];
+        outbuf[len++] = transferBufferResampled[1][pos];
+      }
+      fprintf(stderr, "Resampled %u into %u\n", transfer->valid_length, out*2);
+    }
 
 #ifdef USE_RESAMPLING
     // Scale the 8 bits into 16 bits, this will be signed ints.
