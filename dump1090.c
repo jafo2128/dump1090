@@ -407,7 +407,10 @@ int modesInitHackRF(void) {
     // This gets decimated to 2MSPS in the callback
     // TODO: Use PPM value, but for now, -6ppm
     hackrf_set_freq(Modes.hackrf_dev, 1089993460ull);
-    hackrf_set_sample_rate(Modes.hackrf_dev, 8000000);
+    if(Modes.oversample)
+        hackrf_set_sample_rate(Modes.hackrf_dev, 9600000);
+    else
+        hackrf_set_sample_rate(Modes.hackrf_dev, 8000000);
     // Use a 2MHZ filter or thereabouts
     uint32_t computed = hackrf_compute_baseband_filter_bw(2000000);
     hackrf_set_baseband_filter_bandwidth(Modes.hackrf_dev, computed);
