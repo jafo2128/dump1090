@@ -417,7 +417,7 @@ int modesInitHackRF(void) {
     else
         hackrf_set_sample_rate(Modes.hackrf_dev, 8000000);
     // Use a 1.2MHZ filter or thereabouts
-    uint32_t computed = hackrf_compute_baseband_filter_bw(1200000);
+    uint32_t computed = hackrf_compute_baseband_filter_bw(Modes.oversample ? 2500000 : 2100000);
     hackrf_set_baseband_filter_bandwidth(Modes.hackrf_dev, computed);
     
     hackrf_set_lna_gain(Modes.hackrf_dev, 40);
