@@ -576,7 +576,7 @@ int hackrfCallback(hackrf_transfer *transfer) {
     uint8_t *buf;
     int len;
 
-    {
+/*    {
       static double transferBufferScaled[2][MODES_RTL_BUF_SIZE/2];
       static double transferBufferResampled[2][MODES_RTL_BUF_SIZE/2];
       static double ibuf[FILTER_TAP_NUM], qbuf[FILTER_TAP_NUM];
@@ -591,6 +591,28 @@ int hackrfCallback(hackrf_transfer *transfer) {
       resamp_complex(3, 10, FILTER_TAP_NUM/3, &currPhase, filter_taps, &ibuf, &qbuf,
         transfer->valid_length/2, transferBufferScaled[0], transferBufferScaled[1],
         transferBufferResampled[0], transferBufferResampled[1], &out);
+      for(len = 0; len < out*2;) {
+        uint16_t pos = len/2;
+        outbuf[len++] = transferBufferResampled[0][pos];
+        outbuf[len++] = transferBufferResampled[1][pos];
+      }
+      fprintf(stderr, "Resampled %u into %u\n", transfer->valid_length, out*2);
+    }*/
+    {
+      static double transferBufferScaled[2][MODES_RTL_BUF_SIZE/2];
+      static double transferBufferResampled[2][MODES_RTL_BUF_SIZE/2];
+      static uint8_t outbuf[MODES_RTL_BUF_SIZE];
+      for(len = 0; len < transfer->valid_length;) {
+        uint16_t pos = len/2;
+        transferBufferScaled[0][pos] = transfer->buffer[len++];
+        transferBufferScaled[1][pos] = transfer->buffer[len++];
+      }
+      int out;
+      resamp_complex(transferBufferScaled[0], transferBufferScaled[1], transfer->valid_length/2,
+        transferBufferResampled[0], transferBufferResampled[1], &out);
+/*      resamp_complex(3, 10, FILTER_TAP_NUM/3, &currPhase, filter_taps, &ibuf, &qbuf,
+        transfer->valid_length/2, transferBufferScaled[0], transferBufferScaled[1],
+        transferBufferResampled[0], transferBufferResampled[1], &out);*/
       for(len = 0; len < out*2;) {
         uint16_t pos = len/2;
         outbuf[len++] = transferBufferResampled[0][pos];

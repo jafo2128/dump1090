@@ -100,8 +100,10 @@ Description:
                      filter.
 
 *****************************************************************************/
+void resamp_complex(const double *in_real, const double *in_imag, int num,
+            double *out_real, double *out_imag, int *num_out);
 
-void resamp_complex(int interp_factor_L, int decim_factor_M,
+void real_resamp_complex(int interp_factor_L, int decim_factor_M,
             int num_taps_per_phase, int *p_current_phase,
             const double *const p_H, double *const p_Z_real,
             double *const p_Z_imag, int num_inp, const double *p_inp_real,
