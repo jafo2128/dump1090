@@ -53,6 +53,7 @@
 
 #ifdef USE_HACKRF
 #include <libhackrf/hackrf.h>
+#include <soxr.h>
 #endif
 
 #include <stdarg.h>
@@ -416,11 +417,41 @@ int modesInitHackRF(void) {
     hackrf_set_baseband_filter_bandwidth(Modes.hackrf_dev, computed);
     
     hackrf_set_lna_gain(Modes.hackrf_dev, 40);
-    hackrf_set_vga_gain(Modes.hackrf_dev, 28);
+    hackrf_set_vga_gain(Modes.hackrf_dev, 40);
     hackrf_set_amp_enable(Modes.hackrf_dev, 1);
     
     hackrf_set_antenna_enable(Modes.hackrf_dev, 0);
     
+    // Setup the resampler
+    soxr_io_spec_t iospec;
+    iospec.itype = SOXR_INT16_I;
+    iospec.otype = SOXR_INT16_I;
+    iospec.scale = 1;
+    iospec.e = NULL;
+    iospec.flags = 0;
+    soxr_quality_spec_t quspec;
+    quspec.precision = 20;
+    quspec.phase_response = 20.;
+    quspec.passband_end = 0.913;
+    quspec.stopband_begin = 1.;
+    quspec.e = NULL;
+    quspec.flags = 0;
+    soxr_runtime_spec_t runspec;
+    runspec.log2_min_dft_size = 10;
+    runspec.log2_large_dft_size = 17;
+    runspec.coef_size_kbytes = 400;
+    runspec.e = NULL;
+    runspec.flags = SOXR_COEF_INTERP_LOW;
+    runspec.num_threads = 0;
+    Modes.resampler = soxr_create(
+      8000000,
+      (Modes.oversample?2400000:2000000),
+      2,
+      NULL,
+      &iospec,
+      &quspec,
+      &runspec
+    );
     return 0;
 }
 #endif
@@ -550,6 +581,26 @@ int hackrfCallback(hackrf_transfer *transfer) {
     uint8_t *buf;
     int len;
 
+    // Scale the 8 bits into 16 bits, this will be signed ints.
+    static int16_t transferBufferScaled[MODES_RTL_BUF_SIZE];
+    static int16_t transferBufferResampled[MODES_RTL_BUF_SIZE];
+    for(len = 0; len < transfer->valid_length; len++) {
+      transferBufferScaled[len] = transfer->buffer[len] << 8;
+    }
+    
+    {
+      size_t idone, odone;
+      soxr_process(Modes.resampler,
+        transferBufferScaled, transfer->valid_length, &idone,
+        transferBufferResampled, MODES_RTL_BUF_SIZE, &odone
+      );
+      if(idone != transfer->valid_length) {
+        fprintf(stderr, "Not all input consumed in resampler, got %u, expected %u\n",
+          idone, transfer->valid_length);
+      }
+      fprintf(stderr, "Resampler resulted in: idone: %u, odone: %u\n", idone, odone);
+    }
+
     static uint8_t collectedBuffer[MODES_RTL_BUF_SIZE*4]; // = NULL;
     static int collectedLength = 0;
     
@@ -577,8 +628,8 @@ int hackrfCallback(hackrf_transfer *transfer) {
     // Lock the data buffer variables before accessing them
     pthread_mutex_lock(&Modes.data_mutex);
     if (Modes.exit) {
-	hackrf_stop_rx(Modes.hackrf_dev);
-	return -1;
+        hackrf_stop_rx(Modes.hackrf_dev);
+        return -1;
     }
 
     next_free_buffer = (Modes.first_free_buffer + 1) % MODES_MAG_BUFFERS;
