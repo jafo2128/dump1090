@@ -78,7 +78,7 @@ Outputs:
 
 *****************************************************************************/
 
-#define resamp resamp1          /* select resamp0 or resamp1 here */
+//#define resamp resamp1          /* select resamp0 or resamp1 here */
 
 /* resamp0 is simpler but slower */
 

@@ -20,8 +20,10 @@
 *
 *****************************************************************************/
 
+#include <string.h>
+#include <pthread.h>
 #include "fir_filter.h"
-
+#include "fir_filter_coeffs.h"
 
 /****************************************************************************/
 void resamp0(int interp_factor_L, int decim_factor_M, int num_taps_per_phase,
@@ -146,27 +148,30 @@ void resamp1(int interp_factor_L, int decim_factor_M, int num_taps_per_phase,
 }
 
 static struct resampThreadContext {
-  int currentPhase = 0;
-  pthread_cond_t dataAvailable = PTHREAD_COND_INITIALIZER;
-  pthread_cond_t dataResampled = PTHREAD_COND_INITIALIZER;
-  pthread_mutex_t dataAvailableMutex = PTHRAD_MUTEX_INITIALIZER;
-  pthread_mutex_t dataResampledMutex = PTHRAD_MUTEX_INITIALIZER;
+  int currentPhase;
+  pthread_cond_t dataAvailable;
+  pthread_cond_t dataResampled;
+  pthread_mutex_t dataAvailableMutex;
+  pthread_mutex_t dataResampledMutex;
   double inBuffer[262144];
   int inLen;
   double outBuffer[262144];
   int outLen;
   double zBuf[FILTER_TAP_NUM];
-} realContext, imageContext;
-
-void resamp1(int interp_factor_L, int decim_factor_M, int num_taps_per_phase,
-             int *p_current_phase, const double *const p_H,
-             double *const p_Z, int num_inp, const double *p_inp,
-             double *p_out, int *p_num_out)
+} realContext, imagContext;
              
-void resampThread(struct resampThreadContext *ctx) {
+void *resampThread(void *arg) {
   int i;
+  struct resampThreadContext *ctx = (struct resampThreadContext *)arg;
   
-  for(i = 0; i < FILTER_TAP_NUM; &ctx->zBuf[i++] = 0.);
+  pthread_cond_init(&ctx->dataAvailable, NULL);
+  pthread_cond_init(&ctx->dataResampled, NULL);
+  pthread_mutex_init(&ctx->dataAvailableMutex, NULL);
+  pthread_mutex_init(&ctx->dataResampledMutex, NULL);
+  
+  ctx->currentPhase = 0;
+  
+  for(i = 0; i < FILTER_TAP_NUM; ctx->zBuf[i++] = 0.);
   
   while(1) {
     pthread_cond_wait(&ctx->dataAvailable, &ctx->dataAvailableMutex);
@@ -178,23 +183,28 @@ void resampThread(struct resampThreadContext *ctx) {
     );
     pthread_cond_signal(&ctx->dataResampled);
   }
+  return NULL;
 }
 
-static phread_t realThread, imagThread;
+static pthread_t realThread, imagThread;
 void setup_resamp_threads() {
   pthread_create(&realThread, NULL, resampThread, &realContext);
   pthread_create(&imagThread, NULL, resampThread, &imagContext);
 }
 
 void resamp_complex(const double *in_real, const double *in_imag, int num, double *out_real, double *out_imag, int *num_out) {
-  memcpy(realContext->inBuffer, in_real, num);
-  memcpy(imagContext->inBuffer, in_imag, num);
-  pthread_cond_wait(&realContext->dataResampled, &realContext->dataResampledMutex);
-  memcpy(out_real, realContext->outBuffer, num_out);
-  pthread_mutex_unlock(&realContext->dataResampledMutex);
-  pthread_cond_wait(&imagContext->dataResampled, &imagContext->dataResampledMutex);
-  memcpy(out_imag, imagContext->outBuffer, num_out);
-  pthread_mutex_unlock(&imagContext->dataResampledMutex);
+  memcpy(realContext.inBuffer, in_real, num);
+  memcpy(imagContext.inBuffer, in_imag, num);
+  
+  pthread_cond_signal(&realContext.dataAvailable);
+  pthread_cond_signal(&imagContext.dataAvailable);
+  
+  pthread_cond_wait(&realContext.dataResampled, &realContext.dataResampledMutex);
+  memcpy(out_real, realContext.outBuffer, *num_out);
+  pthread_mutex_unlock(&realContext.dataResampledMutex);
+  pthread_cond_wait(&imagContext.dataResampled, &imagContext.dataResampledMutex);
+  memcpy(out_imag, imagContext.outBuffer, *num_out);
+  pthread_mutex_unlock(&imagContext.dataResampledMutex);
 }
 
 /***************************************************************************/
@@ -206,11 +216,11 @@ void real_resamp_complex(int interp_factor_L, int decim_factor_M,
                     double *p_out_real, double *p_out_imag, int * p_num_out)
 {
     int current_phase = *p_current_phase;
-    resamp(interp_factor_L, decim_factor_M, num_taps_per_phase,
+    resamp1(interp_factor_L, decim_factor_M, num_taps_per_phase,
            &current_phase, p_H, p_Z_real, num_inp, p_inp_real, p_out_real,
            p_num_out);
 
-    resamp(interp_factor_L, decim_factor_M, num_taps_per_phase,
+    resamp1(interp_factor_L, decim_factor_M, num_taps_per_phase,
            p_current_phase, p_H, p_Z_imag, num_inp, p_inp_imag, p_out_imag,
            p_num_out);
 }
