@@ -88,6 +88,7 @@
 typedef struct rtlsdr_dev rtlsdr_dev_t;
 
 #ifdef USE_HACKRF
+typedef struct soxr * soxr_t;
 typedef struct hackrf_device hackrf_dev_t;
 #endif
 
@@ -270,6 +271,7 @@ struct {                             // Internal state
     rtlsdr_dev_t *dev;
 #ifdef USE_HACKRF
     hackrf_dev_t *hackrf_dev;
+    soxr_t        resampler;
 #endif
     int           freq;
     int           ppm_error;
