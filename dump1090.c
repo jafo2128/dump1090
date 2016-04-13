@@ -421,12 +421,13 @@ int modesInitHackRF(void) {
     hackrf_set_baseband_filter_bandwidth(Modes.hackrf_dev, computed);
     
     hackrf_set_lna_gain(Modes.hackrf_dev, 40);
-    hackrf_set_vga_gain(Modes.hackrf_dev, 40);
+    hackrf_set_vga_gain(Modes.hackrf_dev, 42);
     hackrf_set_amp_enable(Modes.hackrf_dev, 1);
     
     hackrf_set_antenna_enable(Modes.hackrf_dev, 0);
     
     // Setup the resampler
+#ifdef USE_RESAMPLING
 #ifdef USE_SAMPLERATE
     Modes.resampler = src_new(SRC_SINC_BEST_QUALITY, 2, NULL);
 #else
@@ -442,6 +443,7 @@ int modesInitHackRF(void) {
       &quspec,
       &runspec
     );
+#endif
 #endif
     return 0;
 }
@@ -572,6 +574,7 @@ int hackrfCallback(hackrf_transfer *transfer) {
     uint8_t *buf;
     int len;
 
+#ifdef USE_RESAMPLING
     // Scale the 8 bits into 16 bits, this will be signed ints.
 #ifdef USE_SAMPLERATE
     static float transferBufferScaled[MODES_RTL_BUF_SIZE];
@@ -611,6 +614,7 @@ int hackrfCallback(hackrf_transfer *transfer) {
       }
       fprintf(stderr, "Resampler resulted in: in: %ld, out: %ld\n", idone, odone);
     }
+#endif
 #endif
 
     static uint8_t collectedBuffer[MODES_RTL_BUF_SIZE*4]; // = NULL;
