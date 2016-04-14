@@ -689,38 +689,18 @@ int hackrfCallbackDecimate(hackrf_transfer *transfer) {
 }
 
 int hackrfCallback(hackrf_transfer *transfer) {
-  static int8_t transferBufferScaled[2][MODES_RTL_BUF_SIZE/2];
-  static int8_t transferBufferResampled[2][MODES_RTL_BUF_SIZE/2];
+  static int8_t transferBufferResampled[MODES_RTL_BUF_SIZE];
   static int8_t outbuf[MODES_RTL_BUF_SIZE];
   static uint32_t outbufPos = 0;
 
-  int32_t out, len, pos;
+  int32_t out, pos;
 
-  for(len = 0; len < transfer->valid_length;) {
-    uint32_t pos = len/2;
-    transferBufferScaled[0][pos] = transfer->buffer[len++];
-    transferBufferScaled[1][pos] = transfer->buffer[len++];
-  }
+  resamp_complex((int8_t *)transfer->buffer, transfer->valid_length/2,
+    (int8_t *)transferBufferResampled, &out);
 
-  fprintf(stderr, "Scaled: %d, %d, %d, %d\n",
-    transferBufferScaled[0][0],
-    transferBufferScaled[0][1],
-    transferBufferScaled[0][2],
-    transferBufferScaled[0][3]
-  );
-
-  resamp_complex(transferBufferScaled[0], transferBufferScaled[1], transfer->valid_length/2,
-    transferBufferResampled[0], transferBufferResampled[1], &out);
-
-  fprintf(stderr, "Resampled: %d, %d, %d, %d\n",
-    transferBufferResampled[0][0],
-    transferBufferResampled[0][1],
-    transferBufferResampled[0][2],
-    transferBufferResampled[0][3]);
-
-  for(pos = 0; pos < out && outbufPos < MODES_RTL_BUF_SIZE; pos++) {
-    outbuf[outbufPos++] = transferBufferResampled[0][pos];
-    outbuf[outbufPos++] = transferBufferResampled[1][pos];
+  int8_t *outbufPtr = &outbuf[outbufPos];
+  for(pos = 0; pos < out && outbufPos < MODES_RTL_BUF_SIZE; pos++, outbufPos++) {
+    *outbufPtr++ = transferBufferResampled[pos];
   }
 
   fprintf(stderr, "outbuf: %d, %d, %d, %d\n",
@@ -739,9 +719,9 @@ int hackrfCallback(hackrf_transfer *transfer) {
     // Put the remainder of samples onto the buffer
     outbufPos = 0;
     if(pos < out) {
-      for(; pos < out && outbufPos < MODES_RTL_BUF_SIZE; pos++) {
-        outbuf[outbufPos++] = transferBufferResampled[0][pos];
-        outbuf[outbufPos++] = transferBufferResampled[1][pos];
+      outbufPtr = &outbuf[outbufPos];
+      for(pos = 0; pos < out && outbufPos < MODES_RTL_BUF_SIZE; pos++, outbufPos++) {
+        *outbufPtr++ = transferBufferResampled[pos];
       }
     }
   }

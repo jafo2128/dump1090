@@ -95,7 +95,7 @@ Description:
                      filter.
 
 *****************************************************************************/
-void resamp_complex(const int8_t *in_real, const int8_t *in_imag, int num,
-            int8_t *out_real, int8_t *out_imag, int *num_out);
+void resamp_complex(const int8_t *in, int num,
+            int8_t *out, int *num_out);
 
 extern void setup_resamp_threads();
