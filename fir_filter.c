@@ -21,7 +21,9 @@
 *****************************************************************************/
 
 #include <string.h>
+#include <stdio.h>
 #include <pthread.h>
+#include <semaphore.h>
 #include "fir_filter.h"
 #include "fir_filter_coeffs.h"
 
@@ -147,64 +149,88 @@ void resamp1(int interp_factor_L, int decim_factor_M, int num_taps_per_phase,
     *p_num_out = num_out;
 }
 
+sem_t threadSync;
+
 static struct resampThreadContext {
   int currentPhase;
-  pthread_cond_t dataAvailable;
-  pthread_cond_t dataResampled;
+  sem_t dataAvailable;
   pthread_mutex_t dataAvailableMutex;
-  pthread_mutex_t dataResampledMutex;
   double inBuffer[262144];
   int inLen;
   double outBuffer[262144];
   int outLen;
   double zBuf[FILTER_TAP_NUM];
+  char *name;
 } realContext, imagContext;
-             
+
 void *resampThread(void *arg) {
   int i;
   struct resampThreadContext *ctx = (struct resampThreadContext *)arg;
-  
-  pthread_cond_init(&ctx->dataAvailable, NULL);
-  pthread_cond_init(&ctx->dataResampled, NULL);
-  pthread_mutex_init(&ctx->dataAvailableMutex, NULL);
-  pthread_mutex_init(&ctx->dataResampledMutex, NULL);
-  
+
   ctx->currentPhase = 0;
-  
+
   for(i = 0; i < FILTER_TAP_NUM; ctx->zBuf[i++] = 0.);
-  
+
   while(1) {
-    pthread_cond_wait(&ctx->dataAvailable, &ctx->dataAvailableMutex);
-    pthread_mutex_unlock(&ctx->dataAvailableMutex);
+    sem_wait(&ctx->dataAvailable);
     ctx->outLen = 262144;
     resamp1(3, 10, FILTER_TAP_NUM/3, &ctx->currentPhase,
       filter_taps, ctx->zBuf, ctx->inLen, ctx->inBuffer,
       ctx->outBuffer, &ctx->outLen
     );
-    pthread_cond_signal(&ctx->dataResampled);
+    //fprintf(stderr, "sigout %s\n", ctx->name);
+    //pthread_mutex_lock(&resampThreadSync);
+    //syncDone++;
+    //pthread_mutex_unlock(&resampThreadSync);
+    sem_post(&threadSync);
+    //pthread_cond_signal(&ctx->dataResampled);
   }
   return NULL;
 }
 
 static pthread_t realThread, imagThread;
 void setup_resamp_threads() {
+  //pthread_cond_init(&realContext.dataAvailable, NULL);
+  //pthread_cond_init(&realContext.dataResampled, NULL);
+  pthread_mutex_init(&realContext.dataAvailableMutex, NULL);
+
+  //pthread_cond_init(&imagContext.dataAvailable, NULL);
+  //pthread_cond_init(&imagContext.dataResampled, NULL);
+  pthread_mutex_init(&imagContext.dataAvailableMutex, NULL);
+  
+  pthread_mutex_lock(&realContext.dataAvailableMutex);
+  pthread_mutex_lock(&imagContext.dataAvailableMutex);
+
+  realContext.name = "real";
+  imagContext.name = "imag";
+
+  sem_init(&threadSync, 0, 0);
+  sem_init(&realContext.dataAvailable, 0, 0);
+  sem_init(&imagContext.dataAvailable, 0, 0);
+
   pthread_create(&realThread, NULL, resampThread, &realContext);
   pthread_create(&imagThread, NULL, resampThread, &imagContext);
 }
 
 void resamp_complex(const double *in_real, const double *in_imag, int num, double *out_real, double *out_imag, int *num_out) {
   memcpy(realContext.inBuffer, in_real, num);
+  realContext.inLen = num;
+  sem_post(&realContext.dataAvailable);
+
   memcpy(imagContext.inBuffer, in_imag, num);
-  
-  pthread_cond_signal(&realContext.dataAvailable);
-  pthread_cond_signal(&imagContext.dataAvailable);
-  
-  pthread_cond_wait(&realContext.dataResampled, &realContext.dataResampledMutex);
-  memcpy(out_real, realContext.outBuffer, *num_out);
-  pthread_mutex_unlock(&realContext.dataResampledMutex);
-  pthread_cond_wait(&imagContext.dataResampled, &imagContext.dataResampledMutex);
-  memcpy(out_imag, imagContext.outBuffer, *num_out);
-  pthread_mutex_unlock(&imagContext.dataResampledMutex);
+  imagContext.inLen = num;
+  sem_post(&imagContext.dataAvailable);
+
+  sem_wait(&threadSync);
+  sem_wait(&threadSync);
+
+  *num_out = realContext.outLen;
+  memcpy(out_real, realContext.outBuffer, realContext.outLen);
+  memcpy(out_imag, imagContext.outBuffer, imagContext.outLen);
+
+  if(realContext.outLen != imagContext.outLen) {
+    fprintf(stderr, "Resampling synchronizer out of sync: %u, %u\n", realContext.outLen, imagContext.outLen);
+  }
 }
 
 /***************************************************************************/

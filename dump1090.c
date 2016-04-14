@@ -447,6 +447,9 @@ int modesInitHackRF(void) {
     );
 #endif
 #endif
+
+    setup_resamp_threads();
+
     return 0;
 }
 #endif

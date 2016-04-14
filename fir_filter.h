@@ -109,3 +109,6 @@ void real_resamp_complex(int interp_factor_L, int decim_factor_M,
             double *const p_Z_imag, int num_inp, const double *p_inp_real,
             const double *p_inp_imag, double *p_out_real,
             double *p_out_imag, int * p_num_out);
+
+extern void setup_resamp_threads();
+
