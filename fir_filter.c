@@ -29,13 +29,13 @@
 
 /****************************************************************************/
 void resamp0(int interp_factor_L, int decim_factor_M, int num_taps_per_phase,
-             int *p_current_phase, const float *const p_H,
-             float *const p_Z, int num_inp, const float *p_inp,
-             float *p_out, int *p_num_out)
+             int *p_current_phase, const double *const p_H,
+             double *const p_Z, int num_inp, const double *p_inp,
+             double *p_out, int *p_num_out)
 {
     int tap, num_out, phase_num = *p_current_phase;
-    const float *p_coeff;
-    float sum;
+    const double *p_coeff;
+    double sum;
 
     num_out = 0;
     while (num_inp > 0) {
@@ -83,13 +83,13 @@ void resamp0(int interp_factor_L, int decim_factor_M, int num_taps_per_phase,
 
 /****************************************************************************/
 void resamp1(int interp_factor_L, int decim_factor_M, int num_taps_per_phase,
-             int *p_current_phase, const float *const p_H,
-             float *const p_Z, int num_inp, const float *p_inp,
-             float *p_out, int *p_num_out)
+             int *p_current_phase, const double *const p_H,
+             double *const p_Z, int num_inp, const double *p_inp,
+             double *p_out, int *p_num_out)
 {
     int tap, num_out, num_new_samples, phase_num = *p_current_phase;
-    const float *p_coeff;
-    float sum;
+    const double *p_coeff;
+    double sum;
 
     num_out = 0;
     while (num_inp > 0) {
@@ -155,11 +155,11 @@ static struct resampThreadContext {
   int currentPhase;
   sem_t dataAvailable;
   pthread_mutex_t dataAvailableMutex;
-  float inBuffer[262144];
+  double inBuffer[262144];
   int inLen;
-  float outBuffer[262144];
+  double outBuffer[262144];
   int outLen;
-  float zBuf[FILTER_TAP_NUM];
+  double zBuf[FILTER_TAP_NUM];
   char *name;
 } realContext, imagContext;
 
@@ -212,7 +212,7 @@ void setup_resamp_threads() {
   pthread_create(&imagThread, NULL, resampThread, &imagContext);
 }
 
-void resamp_complex(const float *in_real, const float *in_imag, int num, float *out_real, float *out_imag, int *num_out) {
+void resamp_complex(const double *in_real, const double *in_imag, int num, double *out_real, double *out_imag, int *num_out) {
   memcpy(realContext.inBuffer, in_real, num);
   realContext.inLen = num;
   sem_post(&realContext.dataAvailable);
@@ -236,10 +236,10 @@ void resamp_complex(const float *in_real, const float *in_imag, int num, float *
 /***************************************************************************/
 void real_resamp_complex(int interp_factor_L, int decim_factor_M,
                     int num_taps_per_phase, int *p_current_phase,
-                    const float *const p_H, float *const p_Z_real,
-                    float *const p_Z_imag, int num_inp,
-                    const float *p_inp_real, const float *p_inp_imag,
-                    float *p_out_real, float *p_out_imag, int * p_num_out)
+                    const double *const p_H, double *const p_Z_real,
+                    double *const p_Z_imag, int num_inp,
+                    const double *p_inp_real, const double *p_inp_imag,
+                    double *p_out_real, double *p_out_imag, int * p_num_out)
 {
     int current_phase = *p_current_phase;
     resamp1(interp_factor_L, decim_factor_M, num_taps_per_phase,
