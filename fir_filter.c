@@ -28,68 +28,14 @@
 #include "fir_filter_coeffs.h"
 
 /****************************************************************************/
-void resamp0(int interp_factor_L, int decim_factor_M, int num_taps_per_phase,
-             int *p_current_phase, const double *const p_H,
-             double *const p_Z, int num_inp, const double *p_inp,
-             double *p_out, int *p_num_out)
-{
-    int tap, num_out, phase_num = *p_current_phase;
-    const double *p_coeff;
-    double sum;
-
-    num_out = 0;
-    while (num_inp > 0) {
-        /* shift input samples into Z delay line */
-        while (phase_num >= interp_factor_L) {
-            /* decrease phase number by interpolation factor L */
-            phase_num -= interp_factor_L;
-
-            /* shift Z delay line up to make room for next sample */
-            for (tap = num_taps_per_phase - 1; tap >= 1; tap--) {
-                p_Z[tap] = p_Z[tap - 1];
-            }
-
-            /* copy next sample from input buffer to bottom of Z delay line */
-            p_Z[0] = *p_inp++;
-
-            if (--num_inp == 0) {
-                break;
-            }
-        }
-
-        /* calculate outputs */
-        while (phase_num < interp_factor_L) {
-            /* point to the current polyphase filter */
-            p_coeff = p_H + phase_num;
-
-            /* calculate FIR sum */
-            sum = 0.0;
-            for (tap = 0; tap < num_taps_per_phase; tap++) {
-                sum += *p_coeff * p_Z[tap];
-                p_coeff += interp_factor_L;  /* point to next coefficient */
-            }
-            *p_out++ = sum;     /* store sum and point to next output */
-            num_out++;
-
-            /* increase phase number by decimation factor M */
-            phase_num += decim_factor_M;
-        }
-    }
-
-    /* pass phase number and number of outputs back to caller */
-    *p_current_phase = phase_num;
-    *p_num_out = num_out;
-}
-
-/****************************************************************************/
 void resamp1(int interp_factor_L, int decim_factor_M, int num_taps_per_phase,
-             int *p_current_phase, const double *const p_H,
-             double *const p_Z, int num_inp, const double *p_inp,
-             double *p_out, int *p_num_out)
+             int *p_current_phase, const int16_t * const p_H,
+             int8_t * const p_Z, int num_inp, const int8_t *p_inp,
+             int8_t * p_out, int *p_num_out)
 {
     int tap, num_out, num_new_samples, phase_num = *p_current_phase;
-    const double *p_coeff;
-    double sum;
+    const int16_t *p_coeff;
+    int32_t sum;
 
     num_out = 0;
     while (num_inp > 0) {
@@ -135,7 +81,7 @@ void resamp1(int interp_factor_L, int decim_factor_M, int num_taps_per_phase,
                 sum += *p_coeff * p_Z[tap];
                 p_coeff += interp_factor_L;   /* point to next coefficient */
             }
-            *p_out++ = sum;     /* store sum and point to next output */
+            *p_out++ = sum >> FILTER_PRECISION;     /* store sum and point to next output */
             num_out++;
 
             /* decrease phase number by decimation factor M */
@@ -155,11 +101,11 @@ static struct resampThreadContext {
   int currentPhase;
   sem_t dataAvailable;
   pthread_mutex_t dataAvailableMutex;
-  double inBuffer[262144];
+  int8_t inBuffer[262144];
   int inLen;
-  double outBuffer[262144];
+  int8_t outBuffer[262144];
   int outLen;
-  double zBuf[FILTER_TAP_NUM];
+  int8_t zBuf[FILTER_TAP_NUM];
   char *name;
 } realContext, imagContext;
 
@@ -173,29 +119,18 @@ void *resampThread(void *arg) {
 
   while(1) {
     sem_wait(&ctx->dataAvailable);
-    ctx->outLen = 262144;
     resamp1(3, 10, FILTER_TAP_NUM/3, &ctx->currentPhase,
       filter_taps, ctx->zBuf, ctx->inLen, ctx->inBuffer,
       ctx->outBuffer, &ctx->outLen
     );
-    //fprintf(stderr, "sigout %s\n", ctx->name);
-    //pthread_mutex_lock(&resampThreadSync);
-    //syncDone++;
-    //pthread_mutex_unlock(&resampThreadSync);
     sem_post(&threadSync);
-    //pthread_cond_signal(&ctx->dataResampled);
   }
   return NULL;
 }
 
 static pthread_t realThread, imagThread;
 void setup_resamp_threads() {
-  //pthread_cond_init(&realContext.dataAvailable, NULL);
-  //pthread_cond_init(&realContext.dataResampled, NULL);
   pthread_mutex_init(&realContext.dataAvailableMutex, NULL);
-
-  //pthread_cond_init(&imagContext.dataAvailable, NULL);
-  //pthread_cond_init(&imagContext.dataResampled, NULL);
   pthread_mutex_init(&imagContext.dataAvailableMutex, NULL);
   
   pthread_mutex_lock(&realContext.dataAvailableMutex);
@@ -212,7 +147,8 @@ void setup_resamp_threads() {
   pthread_create(&imagThread, NULL, resampThread, &imagContext);
 }
 
-void resamp_complex(const double *in_real, const double *in_imag, int num, double *out_real, double *out_imag, int *num_out) {
+void resamp_complex(const int8_t *in_real, const int8_t *in_imag, int num,
+                    int8_t *out_real, int8_t *out_imag, int *num_out) {
   memcpy(realContext.inBuffer, in_real, num);
   realContext.inLen = num;
   sem_post(&realContext.dataAvailable);
@@ -231,22 +167,4 @@ void resamp_complex(const double *in_real, const double *in_imag, int num, doubl
   if(realContext.outLen != imagContext.outLen) {
     fprintf(stderr, "Resampling synchronizer out of sync: %u, %u\n", realContext.outLen, imagContext.outLen);
   }
-}
-
-/***************************************************************************/
-void real_resamp_complex(int interp_factor_L, int decim_factor_M,
-                    int num_taps_per_phase, int *p_current_phase,
-                    const double *const p_H, double *const p_Z_real,
-                    double *const p_Z_imag, int num_inp,
-                    const double *p_inp_real, const double *p_inp_imag,
-                    double *p_out_real, double *p_out_imag, int * p_num_out)
-{
-    int current_phase = *p_current_phase;
-    resamp1(interp_factor_L, decim_factor_M, num_taps_per_phase,
-           &current_phase, p_H, p_Z_real, num_inp, p_inp_real, p_out_real,
-           p_num_out);
-
-    resamp1(interp_factor_L, decim_factor_M, num_taps_per_phase,
-           p_current_phase, p_H, p_Z_imag, num_inp, p_inp_imag, p_out_imag,
-           p_num_out);
 }

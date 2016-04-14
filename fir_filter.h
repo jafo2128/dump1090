@@ -80,17 +80,12 @@ Outputs:
 
 //#define resamp resamp1          /* select resamp0 or resamp1 here */
 
-/* resamp0 is simpler but slower */
-
-void resamp0(int interp_factor_L, int decim_factor_M, int num_taps_per_phase,
-             int *p_current_phase, const double *const p_H, double *const p_Z,
-             int num_inp, const double *p_inp, double *p_out, int *p_num_out);
-
 /* resamp1 is more complicated but faster */
 
 void resamp1(int interp_factor_L, int decim_factor_M, int num_taps_per_phase,
-             int *p_current_phase, const double *const p_H, double *const p_Z,
-             int num_inp, const double *p_inp, double *p_out, int *p_num_out);
+             int *p_current_phase, const int16_t * const p_H,
+             int8_t * const p_Z, int num_inp, const int8_t *p_inp,
+             int8_t * p_out, int *p_num_out);
 
 /*****************************************************************************
 Description:
@@ -100,14 +95,7 @@ Description:
                      filter.
 
 *****************************************************************************/
-void resamp_complex(const double *in_real, const double *in_imag, int num,
-            double *out_real, double *out_imag, int *num_out);
-
-void real_resamp_complex(int interp_factor_L, int decim_factor_M,
-            int num_taps_per_phase, int *p_current_phase,
-            const double *const p_H, double *const p_Z_real,
-            double *const p_Z_imag, int num_inp, const double *p_inp_real,
-            const double *p_inp_imag, double *p_out_real,
-            double *p_out_imag, int * p_num_out);
+void resamp_complex(const int8_t *in_real, const int8_t *in_imag, int num,
+            int8_t *out_real, int8_t *out_imag, int *num_out);
 
 extern void setup_resamp_threads();
