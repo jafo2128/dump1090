@@ -53,7 +53,6 @@
 
 #ifdef USE_HACKRF
 #include <libhackrf/hackrf.h>
-#include "fir_filter_coeffs.h"
 #include "fir_filter.h"
 #ifdef USE_SAMPLERATE
 #include <samplerate.h>
@@ -414,10 +413,10 @@ int modesInitHackRF(void) {
     // This gets decimated to 2MSPS in the callback
     // TODO: Use PPM value, but for now, -6ppm
     hackrf_set_freq(Modes.hackrf_dev, 1089993460ull);
-    if(Modes.oversample)
-        hackrf_set_sample_rate(Modes.hackrf_dev, 9600000);
-    else
-        hackrf_set_sample_rate(Modes.hackrf_dev, 8000000);
+    //if(Modes.oversample)
+    //    hackrf_set_sample_rate(Modes.hackrf_dev, 9600000);
+    //else
+    hackrf_set_sample_rate(Modes.hackrf_dev, 8000000);
     // Use a 1.2MHZ filter or thereabouts
     uint32_t computed = hackrf_compute_baseband_filter_bw(Modes.oversample ? 2500000 : 2100000);
     hackrf_set_baseband_filter_bandwidth(Modes.hackrf_dev, computed);
@@ -437,7 +436,7 @@ int modesInitHackRF(void) {
     soxr_quality_spec_t quspec = soxr_quality_spec(SOXR_QQ, SOXR_LINEAR_PHASE);
     soxr_runtime_spec_t runspec = soxr_runtime_spec(0);
     Modes.resampler = soxr_create(
-      (Modes.oversample?9600000:8000000),
+      8000000,
       (Modes.oversample?2400000:2000000),
       2,
       NULL,
@@ -565,7 +564,7 @@ void rtlsdrCallback(unsigned char *buf, uint32_t len, void *ctx) {
 //=========================================================================
 // HackRF data callback, which will include decimation
 #ifdef USE_HACKRF
-int hackrfCallback(hackrf_transfer *transfer) {
+int hackrfCallbackFull(uint8_t *buf, uint32_t len) {
     struct mag_buf *outbuf;
     struct mag_buf *lastbuf;
     uint32_t slen;
@@ -576,121 +575,6 @@ int hackrfCallback(hackrf_transfer *transfer) {
     static int was_odd = 0; // paranoia!!
     static int dropping = 0;
 
-    uint8_t *buf;
-    int len;
-
-/*    {
-      static double transferBufferScaled[2][MODES_RTL_BUF_SIZE/2];
-      static double transferBufferResampled[2][MODES_RTL_BUF_SIZE/2];
-      static double ibuf[FILTER_TAP_NUM], qbuf[FILTER_TAP_NUM];
-      static uint8_t outbuf[MODES_RTL_BUF_SIZE];
-      for(len = 0; len < transfer->valid_length;) {
-        uint16_t pos = len/2;
-        transferBufferScaled[0][pos] = transfer->buffer[len++];
-        transferBufferScaled[1][pos] = transfer->buffer[len++];
-      }
-      static int currPhase = 0;
-      int out;
-      resamp_complex(3, 10, FILTER_TAP_NUM/3, &currPhase, filter_taps, &ibuf, &qbuf,
-        transfer->valid_length/2, transferBufferScaled[0], transferBufferScaled[1],
-        transferBufferResampled[0], transferBufferResampled[1], &out);
-      for(len = 0; len < out*2;) {
-        uint16_t pos = len/2;
-        outbuf[len++] = transferBufferResampled[0][pos];
-        outbuf[len++] = transferBufferResampled[1][pos];
-      }
-      fprintf(stderr, "Resampled %u into %u\n", transfer->valid_length, out*2);
-    }*/
-    {
-      static double transferBufferScaled[2][MODES_RTL_BUF_SIZE/2];
-      static double transferBufferResampled[2][MODES_RTL_BUF_SIZE/2];
-      static uint8_t outbuf[MODES_RTL_BUF_SIZE];
-      for(len = 0; len < transfer->valid_length;) {
-        uint16_t pos = len/2;
-        transferBufferScaled[0][pos] = transfer->buffer[len++];
-        transferBufferScaled[1][pos] = transfer->buffer[len++];
-      }
-      int out;
-      resamp_complex(transferBufferScaled[0], transferBufferScaled[1], transfer->valid_length/2,
-        transferBufferResampled[0], transferBufferResampled[1], &out);
-/*      resamp_complex(3, 10, FILTER_TAP_NUM/3, &currPhase, filter_taps, &ibuf, &qbuf,
-        transfer->valid_length/2, transferBufferScaled[0], transferBufferScaled[1],
-        transferBufferResampled[0], transferBufferResampled[1], &out);*/
-      for(len = 0; len < out*2;) {
-        uint16_t pos = len/2;
-        outbuf[len++] = transferBufferResampled[0][pos];
-        outbuf[len++] = transferBufferResampled[1][pos];
-      }
-      fprintf(stderr, "Resampled %u into %u\n", transfer->valid_length, out*2);
-    }
-
-#ifdef USE_RESAMPLING
-    // Scale the 8 bits into 16 bits, this will be signed ints.
-#ifdef USE_SAMPLERATE
-    static float transferBufferScaled[MODES_RTL_BUF_SIZE];
-    static float transferBufferResampled[MODES_RTL_BUF_SIZE];
-#else
-    static int16_t transferBufferScaled[MODES_RTL_BUF_SIZE];
-    static int16_t transferBufferResampled[MODES_RTL_BUF_SIZE];
-#endif
-    for(len = 0; len < transfer->valid_length; len++) {
-      #ifdef USE_SAMPLERATE
-      transferBufferScaled[len] = (float)(transfer->buffer[len] / 128.);
-      #else
-      transferBufferScaled[len] = transfer->buffer[len]<<8;
-      #endif
-    }
-    
-#ifdef USE_SAMPLERATE
-      SRC_DATA src_data;
-      src_data.data_in = transferBufferScaled;
-      src_data.data_out = transferBufferResampled;
-      src_data.input_frames = transfer->valid_length;
-      src_data.output_frames = MODES_RTL_BUF_SIZE;
-      src_data.src_ratio = 2400000./8000000.;
-      src_data.end_of_input = 0;
-      src_process(Modes.resampler, &src_data);
-      fprintf(stderr, "Resampler resulted in: in: %ld, out: %ld\n", src_data.input_frames_used, src_data.output_frames_gen);
-#else
-    {
-      size_t idone, odone;
-      soxr_process(Modes.resampler,
-        transferBufferScaled, transfer->valid_length/2, &idone,
-        transferBufferResampled, MODES_RTL_BUF_SIZE/2, &odone
-      );
-      if(idone != transfer->valid_length/2) {
-        fprintf(stderr, "Not all input consumed in resampler, got %u, expected %u\n",
-          idone, transfer->valid_length);
-      }
-      fprintf(stderr, "Resampler resulted in: in: %ld, out: %ld\n", idone, odone);
-    }
-#endif
-#endif
-
-    static uint8_t collectedBuffer[MODES_RTL_BUF_SIZE*4]; // = NULL;
-    static int collectedLength = 0;
-    
-/*    if(collectedBuffer == NULL) {
-      fprintf(stderr, "Allocating buffer for collection.\n");
-      collectedBuffer = (uint8_t)malloc(MODES_RTL_BUF_SIZE*4);
-    }*/
-
-    // If we're still collecting data...
-    if(collectedLength < MODES_RTL_BUF_SIZE*4) {
-      memcpy(collectedBuffer+collectedLength, transfer->buffer, transfer->valid_length);
-      collectedLength += transfer->valid_length;
-    }
-
-    // Block still too small?
-    if(collectedLength < MODES_RTL_BUF_SIZE*4) {
-      return 0;
-    }
-    
-    // We now have a full set of 8MSPS data
-    buf = collectedBuffer;
-    len = collectedLength;
-    collectedLength = 0;
-    
     // Lock the data buffer variables before accessing them
     pthread_mutex_lock(&Modes.data_mutex);
     if (Modes.exit) {
@@ -704,9 +588,9 @@ int hackrfCallback(hackrf_transfer *transfer) {
     free_bufs = (Modes.first_filled_buffer - next_free_buffer + MODES_MAG_BUFFERS) % MODES_MAG_BUFFERS;
 
     // Paranoia! Unlikely, but let's go for belt and suspenders here
-    if (len != (MODES_RTL_BUF_SIZE * 4)) {
+    if (len != (MODES_RTL_BUF_SIZE)) {
       fprintf(stderr, "weirdness: received a block of %u bytes, expecting %u bytes\n",
-                (unsigned)len, (unsigned)MODES_RTL_BUF_SIZE*4);
+                (unsigned)len, (unsigned)MODES_RTL_BUF_SIZE);
     }
 
     if (was_odd) {
@@ -716,20 +600,12 @@ int hackrfCallback(hackrf_transfer *transfer) {
         ++outbuf->dropped;
     }
 
-    // Decimate the buffer now
     // This is a set of pairs of IQ data, so each section is 2 bytes
     // Data also comes in signed, unsign it
-    static uint8_t decimatedBuffer[MODES_RTL_BUF_SIZE];
-    uint32_t bufferPos, decimatePos;
-    for(bufferPos = 0, decimatePos = 0; decimatePos < MODES_RTL_BUF_SIZE; bufferPos+=7, decimatePos++) {
-      decimatedBuffer[decimatePos++] = buf[bufferPos++] ^ (uint8_t)0x80;
-      decimatedBuffer[decimatePos] = buf[bufferPos] ^ (uint8_t)0x80;
+    uint32_t bufferPos;
+    for(bufferPos = 0; bufferPos < MODES_RTL_BUF_SIZE; bufferPos++) {
+      buf[bufferPos] ^= (uint8_t)0x80;
     }
-
-    // Use the decimated buffer now
-    buf = decimatedBuffer;
-
-    len /= 4;
 
     was_odd = (len & 1);
     slen = len/2;
@@ -780,6 +656,90 @@ int hackrfCallback(hackrf_transfer *transfer) {
     pthread_mutex_unlock(&Modes.data_mutex);
 
     return 0;
+}
+
+int hackrfCallback(hackrf_transfer *transfer) {
+  static float transferBufferScaled[2][MODES_RTL_BUF_SIZE/2];
+  static float transferBufferResampled[2][MODES_RTL_BUF_SIZE/2];
+  static uint8_t outbuf[MODES_RTL_BUF_SIZE];
+  static uint32_t outbufPos = 0;
+  
+  int out, len, pos;
+
+  for(len = 0; len < transfer->valid_length;) {
+    uint16_t pos = len/2;
+    transferBufferScaled[0][pos] = transfer->buffer[len++];
+    transferBufferScaled[1][pos] = transfer->buffer[len++];
+  }  
+
+  resamp_complex(transferBufferScaled[0], transferBufferScaled[1], transfer->valid_length/2,
+    transferBufferResampled[0], transferBufferResampled[1], &out);
+
+  for(pos = 0; pos < out && outbufPos < MODES_RTL_BUF_SIZE; pos++) {
+    outbuf[outbufPos++] = transferBufferResampled[0][pos] * 128;
+    outbuf[outbufPos++] = transferBufferResampled[1][pos] * 128;
+  }
+  
+  fprintf(stderr, "Resampled %u into %u, at pos %u\n", transfer->valid_length, out*2, outbufPos);
+
+  if(outbufPos == MODES_RTL_BUF_SIZE) {
+    // Full buffer
+    hackrfCallbackFull(outbuf, MODES_RTL_BUF_SIZE);
+    
+    // Put the remainder of samples onto the buffer
+    outbufPos = 0;
+    if(pos < out) {
+      for(; pos < out && outbufPos < MODES_RTL_BUF_SIZE; pos++) {
+        outbuf[outbufPos++] = transferBufferResampled[0][pos] * 128;
+        outbuf[outbufPos++] = transferBufferResampled[1][pos] * 128;
+      }
+    }
+  }
+
+  #ifdef USE_RESAMPLING
+      // Scale the 8 bits into 16 bits, this will be signed ints.
+  #ifdef USE_SAMPLERATE
+      static float transferBufferScaled[MODES_RTL_BUF_SIZE];
+      static float transferBufferResampled[MODES_RTL_BUF_SIZE];
+  #else
+      static int16_t transferBufferScaled[MODES_RTL_BUF_SIZE];
+      static int16_t transferBufferResampled[MODES_RTL_BUF_SIZE];
+  #endif
+      for(len = 0; len < transfer->valid_length; len++) {
+        #ifdef USE_SAMPLERATE
+        transferBufferScaled[len] = (float)(transfer->buffer[len] / 128.);
+        #else
+        transferBufferScaled[len] = transfer->buffer[len]<<8;
+        #endif
+      }
+      
+  #ifdef USE_SAMPLERATE
+        SRC_DATA src_data;
+        src_data.data_in = transferBufferScaled;
+        src_data.data_out = transferBufferResampled;
+        src_data.input_frames = transfer->valid_length;
+        src_data.output_frames = MODES_RTL_BUF_SIZE;
+        src_data.src_ratio = 2400000./8000000.;
+        src_data.end_of_input = 0;
+        src_process(Modes.resampler, &src_data);
+        fprintf(stderr, "Resampler resulted in: in: %ld, out: %ld\n", src_data.input_frames_used, src_data.output_frames_gen);
+  #else
+      {
+        size_t idone, odone;
+        soxr_process(Modes.resampler,
+          transferBufferScaled, transfer->valid_length/2, &idone,
+          transferBufferResampled, MODES_RTL_BUF_SIZE/2, &odone
+        );
+        if(idone != transfer->valid_length/2) {
+          fprintf(stderr, "Not all input consumed in resampler, got %u, expected %u\n",
+            idone, transfer->valid_length);
+        }
+        fprintf(stderr, "Resampler resulted in: in: %ld, out: %ld\n", idone, odone);
+      }
+  #endif
+  #endif
+
+  return 0;
 }
 #endif
 //

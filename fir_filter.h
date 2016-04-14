@@ -83,14 +83,14 @@ Outputs:
 /* resamp0 is simpler but slower */
 
 void resamp0(int interp_factor_L, int decim_factor_M, int num_taps_per_phase,
-             int *p_current_phase, const double *const p_H, double *const p_Z,
-             int num_inp, const double *p_inp, double *p_out, int *p_num_out);
+             int *p_current_phase, const float *const p_H, float *const p_Z,
+             int num_inp, const float *p_inp, float *p_out, int *p_num_out);
 
 /* resamp1 is more complicated but faster */
 
 void resamp1(int interp_factor_L, int decim_factor_M, int num_taps_per_phase,
-             int *p_current_phase, const double *const p_H, double *const p_Z,
-             int num_inp, const double *p_inp, double *p_out, int *p_num_out);
+             int *p_current_phase, const float *const p_H, float *const p_Z,
+             int num_inp, const float *p_inp, float *p_out, int *p_num_out);
 
 /*****************************************************************************
 Description:
@@ -100,15 +100,14 @@ Description:
                      filter.
 
 *****************************************************************************/
-void resamp_complex(const double *in_real, const double *in_imag, int num,
-            double *out_real, double *out_imag, int *num_out);
+void resamp_complex(const float *in_real, const float *in_imag, int num,
+            float *out_real, float *out_imag, int *num_out);
 
 void real_resamp_complex(int interp_factor_L, int decim_factor_M,
             int num_taps_per_phase, int *p_current_phase,
-            const double *const p_H, double *const p_Z_real,
-            double *const p_Z_imag, int num_inp, const double *p_inp_real,
-            const double *p_inp_imag, double *p_out_real,
-            double *p_out_imag, int * p_num_out);
+            const float *const p_H, float *const p_Z_real,
+            float *const p_Z_imag, int num_inp, const float *p_inp_real,
+            const float *p_inp_imag, float *p_out_real,
+            float *p_out_imag, int * p_num_out);
 
 extern void setup_resamp_threads();
-
