@@ -668,19 +668,19 @@ int hackrfCallback(hackrf_transfer *transfer) {
 
   for(len = 0; len < transfer->valid_length;) {
     uint16_t pos = len/2;
-    transferBufferScaled[0][pos] = transfer->buffer[len++];
-    transferBufferScaled[1][pos] = transfer->buffer[len++];
+    transferBufferScaled[0][pos] = (float)((int8_t)transfer->buffer[len++]) * 128.;
+    transferBufferScaled[1][pos] = (float)((int8_t)transfer->buffer[len++]) * 128.;
   }  
 
   resamp_complex(transferBufferScaled[0], transferBufferScaled[1], transfer->valid_length/2,
     transferBufferResampled[0], transferBufferResampled[1], &out);
 
   for(pos = 0; pos < out && outbufPos < MODES_RTL_BUF_SIZE; pos++) {
-    outbuf[outbufPos++] = transferBufferResampled[0][pos] * 128;
-    outbuf[outbufPos++] = transferBufferResampled[1][pos] * 128;
+    outbuf[outbufPos++] = (int8_t)(transferBufferResampled[0][pos] * 128.);
+    outbuf[outbufPos++] = (int8_t)(transferBufferResampled[1][pos] * 128.);
   }
   
-  fprintf(stderr, "Resampled %u into %u, at pos %u\n", transfer->valid_length, out*2, outbufPos);
+  //fprintf(stderr, "Resampled %u into %u, at pos %u\n", transfer->valid_length, out*2, outbufPos);
 
   if(outbufPos == MODES_RTL_BUF_SIZE) {
     // Full buffer
@@ -690,8 +690,8 @@ int hackrfCallback(hackrf_transfer *transfer) {
     outbufPos = 0;
     if(pos < out) {
       for(; pos < out && outbufPos < MODES_RTL_BUF_SIZE; pos++) {
-        outbuf[outbufPos++] = transferBufferResampled[0][pos] * 128;
-        outbuf[outbufPos++] = transferBufferResampled[1][pos] * 128;
+        outbuf[outbufPos++] = (int8_t)(transferBufferResampled[0][pos] * 128.);
+        outbuf[outbufPos++] = (int8_t)(transferBufferResampled[1][pos] * 128.);
       }
     }
   }

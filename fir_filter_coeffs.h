@@ -19,7 +19,7 @@ sampling frequency: 8000000 Hz
 
 #define FILTER_TAP_NUM 90
 
-static double filter_taps[FILTER_TAP_NUM] = {
+static float filter_taps[FILTER_TAP_NUM] = {
   0.000025668081796647413,
   0.00012849257374955044,
   0.0003207205332559333,
