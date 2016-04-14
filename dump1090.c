@@ -711,7 +711,7 @@ int hackrfCallback(hackrf_transfer *transfer) {
 
   //fprintf(stderr, "Resampled %u into %u, at pos %u\n", transfer->valid_length, out*2, outbufPos);
 
-  if(outbufPos == MODES_RTL_BUF_SIZE) {
+  if(outbufPos >= MODES_RTL_BUF_SIZE) {
     // Full buffer
     hackrfCallbackFull(outbuf, outbufPos);
 
@@ -725,7 +725,7 @@ int hackrfCallback(hackrf_transfer *transfer) {
     }
   }
 
-  #ifdef USE_RESAMPLING
+  /*#ifdef USE_RESAMPLING
       // Scale the 8 bits into 16 bits, this will be signed ints.
   #ifdef USE_SAMPLERATE
       static float transferBufferScaled[MODES_RTL_BUF_SIZE];
@@ -766,7 +766,7 @@ int hackrfCallback(hackrf_transfer *transfer) {
         fprintf(stderr, "Resampler resulted in: in: %ld, out: %ld\n", idone, odone);
       }
   #endif
-  #endif
+  #endif*/
 
   return 0;
 }
