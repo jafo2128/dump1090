@@ -408,15 +408,15 @@ int modesInitHackRF(void) {
     // TODO: Use PPM value, but for now, -6ppm
     hackrf_set_freq(Modes.hackrf_dev, 1089993460ull);
     if(Modes.oversample)
-        hackrf_set_sample_rate(Modes.hackrf_dev, 9600000);
+        hackrf_set_sample_rate(Modes.hackrf_dev, 2400000);
     else
-        hackrf_set_sample_rate(Modes.hackrf_dev, 8000000);
+        hackrf_set_sample_rate(Modes.hackrf_dev, 2000000);
     // Use a 2MHZ filter or thereabouts
-    uint32_t computed = hackrf_compute_baseband_filter_bw(2000000);
-    hackrf_set_baseband_filter_bandwidth(Modes.hackrf_dev, computed);
+//    uint32_t computed = hackrf_compute_baseband_filter_bw(2000000);
+//    hackrf_set_baseband_filter_bandwidth(Modes.hackrf_dev, computed);
     
     hackrf_set_lna_gain(Modes.hackrf_dev, 40);
-    hackrf_set_vga_gain(Modes.hackrf_dev, 28);
+    hackrf_set_vga_gain(Modes.hackrf_dev, 34);
     hackrf_set_amp_enable(Modes.hackrf_dev, 1);
     
     hackrf_set_antenna_enable(Modes.hackrf_dev, 0);
@@ -547,33 +547,9 @@ int hackrfCallback(hackrf_transfer *transfer) {
     static int was_odd = 0; // paranoia!!
     static int dropping = 0;
 
-    uint8_t *buf;
-    int len;
+    uint8_t *buf = transfer->buffer;
+    int len = transfer->valid_length;
 
-    static uint8_t collectedBuffer[MODES_RTL_BUF_SIZE*4]; // = NULL;
-    static int collectedLength = 0;
-    
-/*    if(collectedBuffer == NULL) {
-      fprintf(stderr, "Allocating buffer for collection.\n");
-      collectedBuffer = (uint8_t)malloc(MODES_RTL_BUF_SIZE*4);
-    }*/
-
-    // If we're still collecting data...
-    if(collectedLength < MODES_RTL_BUF_SIZE*4) {
-      memcpy(collectedBuffer+collectedLength, transfer->buffer, transfer->valid_length);
-      collectedLength += transfer->valid_length;
-    }
-
-    // Block still too small?
-    if(collectedLength < MODES_RTL_BUF_SIZE*4) {
-      return 0;
-    }
-    
-    // We now have a full set of 8MSPS data
-    buf = collectedBuffer;
-    len = collectedLength;
-    collectedLength = 0;
-    
     // Lock the data buffer variables before accessing them
     pthread_mutex_lock(&Modes.data_mutex);
     if (Modes.exit) {
@@ -587,7 +563,7 @@ int hackrfCallback(hackrf_transfer *transfer) {
     free_bufs = (Modes.first_filled_buffer - next_free_buffer + MODES_MAG_BUFFERS) % MODES_MAG_BUFFERS;
 
     // Paranoia! Unlikely, but let's go for belt and suspenders here
-    if (len != (MODES_RTL_BUF_SIZE * 4)) {
+    if (len != (MODES_RTL_BUF_SIZE)) {
       fprintf(stderr, "weirdness: received a block of %u bytes, expecting %u bytes\n",
                 (unsigned)len, (unsigned)MODES_RTL_BUF_SIZE*4);
     }
@@ -599,20 +575,10 @@ int hackrfCallback(hackrf_transfer *transfer) {
         ++outbuf->dropped;
     }
 
-    // Decimate the buffer now
-    // This is a set of pairs of IQ data, so each section is 2 bytes
-    // Data also comes in signed, unsign it
-    static uint8_t decimatedBuffer[MODES_RTL_BUF_SIZE];
-    uint32_t bufferPos, decimatePos;
-    for(bufferPos = 0, decimatePos = 0; decimatePos < MODES_RTL_BUF_SIZE; bufferPos+=7, decimatePos++) {
-      decimatedBuffer[decimatePos++] = buf[bufferPos++] ^ (uint8_t)0x80;
-      decimatedBuffer[decimatePos] = buf[bufferPos] ^ (uint8_t)0x80;
+    int bufferPos;
+    for(bufferPos = 0; bufferPos < len; bufferPos++) {
+      buf[bufferPos] ^= (uint8_t)0x80;
     }
-
-    // Use the decimated buffer now
-    buf = decimatedBuffer;
-
-    len /= 4;
 
     was_odd = (len & 1);
     slen = len/2;

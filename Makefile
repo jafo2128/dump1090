@@ -23,7 +23,7 @@ LIBS_RTL=`pkg-config --libs librtlsdr libusb-1.0`
 CC=gcc
 
 ifdef HACKRF
-CFLAGS+=-DUSE_HACKRF `pkg-config --cflags libhackrf`
+CFLAGS+=-DUSE_HACKRF `pkg-config --cflags libhackrf` -O3 -ggdb3 -ftree-vectorizer-verbose=2 -funroll-loops -Wno-cast-align -mfpu=neon-vfpv4 -mfloat-abi=hard -march=armv7-a -ffast-math -funsafe-math-optimizations
 LIBS_RTL+=`pkg-config --libs libhackrf`
 endif
 
