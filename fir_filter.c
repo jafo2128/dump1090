@@ -219,8 +219,8 @@ void interleave(const uint8_t *srcA, const uint8_t *srcB, uint8_t *dstAB, size_t
         } ab8x8_t;
 
         uint64_t *dstAB64 = (uint64_t *)dstAB;
-        int j = 0;
-        for (int i = 0; i < dstABLength_8.quot; i++)
+        int i, j = 0;
+        for (i = 0; i < dstABLength_8.quot; i++)
         {
             ab8x8_t cursor;
             cursor.narrow.a1 = srcA[j  ];
@@ -247,8 +247,8 @@ void interleave(const uint8_t *srcA, const uint8_t *srcB, uint8_t *dstAB, size_t
         } ab8x4_t;
 
         uint32_t *dstAB32 = (uint32_t *)dstAB;
-        int j = 0;
-        for (int i = 0; i < dstABLength_4.quot; i++)
+        int i, j = 0;
+        for (i = 0; i < dstABLength_4.quot; i++)
         {
             ab8x4_t cursor;
             cursor.narrow.a1 = srcA[j  ];
@@ -269,7 +269,8 @@ void interleave(const uint8_t *srcA, const uint8_t *srcB, uint8_t *dstAB, size_t
     } ab8x2_t;
 
     uint16_t *dstAB16 = (uint16_t *)dstAB;
-    for (int i = 0; i < dstABLength_2.quot; i++)
+    int i;
+    for (i = 0; i < dstABLength_2.quot; i++)
     {
         ab8x2_t cursor;
         cursor.narrow.a = srcA[i];
@@ -331,8 +332,8 @@ void deinterleave(const uint8_t *srcAB, uint8_t *dstA, uint8_t *dstB, size_t src
         } ab8x8_t;
 
         uint64_t *srcAB64 = (uint64_t *)srcAB;
-        int j = 0;
-        for (int i = 0; i < srcABLength_8.quot; i++)
+        int i, j = 0;
+        for (i = 0; i < srcABLength_8.quot; i++)
         {
             ab8x8_t cursor;
             cursor.wide = srcAB64[i];
@@ -359,8 +360,8 @@ void deinterleave(const uint8_t *srcAB, uint8_t *dstA, uint8_t *dstB, size_t src
         } ab8x4_t;
 
         uint32_t *srcAB32 = (uint32_t *)srcAB;
-        int j = 0;
-        for (int i = 0; i < srcABLength_4.quot; i++)
+        int i, j = 0;
+        for (i = 0; i < srcABLength_4.quot; i++)
         {
             ab8x4_t cursor;
             cursor.wide = srcAB32[i];
@@ -381,7 +382,8 @@ void deinterleave(const uint8_t *srcAB, uint8_t *dstA, uint8_t *dstB, size_t src
     } ab8x2_t;
 
     uint16_t *srcAB16 = (uint16_t *)srcAB;
-    for (int i = 0; i < srcABLength_2.quot; i++)
+    int i;
+    for (i = 0; i < srcABLength_2.quot; i++)
     {
         ab8x2_t cursor;
         cursor.wide = srcAB16[i];
